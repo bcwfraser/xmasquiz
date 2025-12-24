@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>World Cup 2026 – Venue Quiz</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 12px;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f5f5f5;
+  }
+
+  h1 {
+    margin: 0 0 8px;
+    font-size: 20px;
+  }
+
+  .container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  /* Your 1802 x 2048 North America outline */
+  #map-wrapper {
+  position: relative;
+  width: 360px;               /* fixed width */
+  height: 410px;              /* 360 * (2048/1802) ≈ 410, keeps aspect */
+  background: #ffffff;
+  border: 1px solid #cccccc;
+  border-radius: 4px;
+  overflow: hidden;
+  touch-action: none;
+}
+
+
+  #map-image {
+    position: absolute;
+    inset: 0;
+    background-image: url("blank-north-america.png");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+
+  .marker {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #c0392b;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: grab;
+    user-select: none;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .marker.dragging {
+    opacity: 0.75;
+    cursor: grabbing;
+  }
+
+  .marker.locked {
+    cursor: default;
+  }
+
+  .correct-marker {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: rgba(0, 180, 0, 0.9);
+    border: 2px solid #ffffff;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+  }
+
+  #marker-info {
+    position: absolute;
+    max-width: 220px;
+    padding: 6px 8px;
+    font-size: 12px;
+    color: #ffffff;
+    background: rgba(0, 0, 0, 0.85);
+    border-radius: 4px;
+    pointer-events: none;
+    transform: translate(-50%, -110%);
+    z-index: 20;
+    display: none;
+  }
+
+  #marker-info::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -6px;
+    transform: translateX(-50%);
+    border-width: 6px 6px 0 6px;
+    border-style: solid;
+    border-color: rgba(0,0,0,0.85) transparent transparent transparent;
+  }
+
+  #controls {
+    flex: 1 1 220px;
+    max-width: 320px;
+    padding: 10px 12px;
+    background: #ffffff;
+    border-radius: 4px;
+    border: 1px solid #dddddd;
+    font-size: 14px;
+  }
+
+  #controls h2 {
+    margin: 0 0 6px;
+    font-size: 18px;
+  }
+
+  #controls p {
+    margin: 4px 0;
+  }
+
+  button {
+    display: inline-block;
+    margin: 4px 4px 8px 0;
+    padding: 6px 10px;
+    font-size: 14px;
+    border-radius: 4px;
+    border: 1px solid #888888;
+    background: #ffffff;
+    cursor: pointer;
+  }
+
+  button:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  #score {
+    font-weight: 600;
+    margin-top: 4px;
+  }
+
+  #status-log {
+    margin-top: 10px;
+    max-height: 260px;
+    overflow-y: auto;
+    border-top: 1px solid #eeeeee;
+    padding-top: 6px;
+    font-size: 13px;
+  }
+
+  #status-log div {
+    margin-bottom: 4px;
+  }
+
+  .hint {
+    font-size: 12px;
+    color: #666666;
+  }
+
+  #calibration {
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid #eeeeee;
+  }
+
+  #calibration textarea {
+    width: 100%;
+    font-size: 11px;
+    font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
+  }
+
+  @media (max-width: 600px) {
+    #controls {
+      max-width: 100%;
+    }
+  }
+</style>
+</head>
+<body>
+
+<h1>World Cup 2026 – Venue Quiz</h1>
+
+<div class="container">
+  <div id="map-wrapper">
+    <div id="map-image"></div>
+    <div id="marker-info"></div>
+  </div>
+
+  <div id="controls">
+    <h2>Instructions</h2>
+    <p>Drag each numbered circle onto the map where you think that World Cup stadium is.</p>
+    <p class="hint">
+      Tap a marker to see its name. When everyone is done, press “Start reveal” and then “Reveal next”.
+      A point is awarded if the guess is within about 150 miles.
+    </p>
+
+    <button id="start-reveal">Start reveal</button>
+    <button id="next-answer" disabled>Reveal next</button>
+
+    <div id="score">Score: 0 / 16</div>
+    <p class="hint">Distances are approximate, based on the scale of this drawing.</p>
+
+    <div id="status-log"></div>
+
+    <!-- Host calibration block (only shown when HOST_MODE = true in JS) -->
+    <div id="calibration" style="display:none;">
+      <h3 style="margin:8px 0 4px; font-size:15px;">Host calibration</h3>
+      <p class="hint">
+        Pick a stadium, then click its true spot on the map to set the correct answer.
+      </p>
+      <label for="calib-select">Stadium:</label>
+      <select id="calib-select"></select>
+      <p class="hint" style="margin-top:6px;">
+        Updated positions appear below as JSON – copy into the code if you want them saved permanently.
+      </p>
+      <textarea id="calib-output" rows="6" readonly></textarea>
+    </div>
+  </div>
+</div>
+
+<script>
+  /* Host mode: true = show calibration tools, false = game only */
+  const HOST_MODE = true;
+
+  /* Approximate scale: one pixel ~2.5 miles across this drawing */
+  const MILES_THRESHOLD = 150;
+  const MILES_PER_PIXEL = 2.5;
+
+  const answers = [
+    { id: 1,  name: "BC Place",                       city: "Vancouver",          relX: null, relY: null },
+    { id: 2,  name: "Lumen Field",                    city: "Seattle",            relX: null, relY: null },
+    { id: 3,  name: "Levi's Stadium",                 city: "Santa Clara",        relX: null, relY: null },
+    { id: 4,  name: "SoFi Stadium",                   city: "Los Angeles",        relX: null, relY: null },
+    { id: 5,  name: "Estadio Akron",                  city: "Guadalajara",        relX: null, relY: null },
+    { id: 6,  name: "Estadio Azteca",                 city: "Mexico City",        relX: null, relY: null },
+    { id: 7,  name: "Estadio BBVA",                   city: "Monterrey",          relX: null, relY: null },
+    { id: 8,  name: "AT&T Stadium",                   city: "Arlington (Dallas)", relX: null, relY: null },
+    { id: 9,  name: "NRG Stadium",                    city: "Houston",            relX: null, relY: null },
+    { id: 10, name: "GEHA Field at Arrowhead Stadium", city: "Kansas City",      relX: null, relY: null },
+    { id: 11, name: "Mercedes-Benz Stadium",          city: "Atlanta",            relX: null, relY: null },
+    { id: 12, name: "Hard Rock Stadium",              city: "Miami Gardens",      relX: null, relY: null },
+    { id: 13, name: "BMO Field",                      city: "Toronto",            relX: null, relY: null },
+    { id: 14, name: "Gillette Stadium",               city: "Foxborough (Boston)",relX: null, relY: null },
+    { id: 15, name: "Lincoln Financial Field",        city: "Philadelphia",       relX: null, relY: null },
+    { id: 16, name: "MetLife Stadium",                city: "East Rutherford",    relX: null, relY: null }
+  ];
+
+  answers.forEach(function (a) {
+    a.info = a.name + ": " + a.city;
+  });
+
+  document.addEventListener("DOMContentLoaded", function () {
+    const mapWrapper     = document.getElementById("map-wrapper");
+    const startRevealBtn = document.getElementById("start-reveal");
+    const nextAnswerBtn  = document.getElementById("next-answer");
+    const scoreEl        = document.getElementById("score");
+    const statusLog      = document.getElementById("status-log");
+    const infoBox        = document.getElementById("marker-info");
+
+    const calibSection   = document.getElementById("calibration");
+    const calibSelect    = document.getElementById("calib-select");
+    const calibOutput    = document.getElementById("calib-output");
+
+    const markers = [];
+    let draggingMarker = null;
+    let dragEnabled = true;
+    let revealIndex = 0;
+    let score = 0;
+    let activeInfoMarkerId = null;
+    let currentCalibId = null;
+
+    if (HOST_MODE) {
+      calibSection.style.display = "block";
+      answers.forEach(function (a) {
+        const opt = document.createElement("option");
+        opt.value = String(a.id);
+        opt.textContent = "#" + a.id + " – " + a.info;
+        calibSelect.appendChild(opt);
+      });
+      if (answers.length > 0) {
+        currentCalibId = answers[0].id;
+        calibSelect.value = String(currentCalibId);
+      }
+      calibSelect.addEventListener("change", function () {
+        currentCalibId = parseInt(calibSelect.value, 10);
+      });
+      updateCalibOutput();
+      mapWrapper.addEventListener("click", handleCalibrationClick);
+    }
+
+    createMarkers();
+    scoreEl.textContent = "Score: " + score + " / " + answers.length;
+
+    startRevealBtn.addEventListener("click", function () {
+      dragEnabled = false;
+      startRevealBtn.disabled = true;
+      nextAnswerBtn.disabled = false;
+      lockMarkers();
+      addStatus("Reveal started. Click “Reveal next” for each location.");
+      hideInfoBox();
+    });
+
+    nextAnswerBtn.addEventListener("click", function () {
+      hideInfoBox();
+      revealNextAnswer();
+    });
+
+    mapWrapper.addEventListener("pointerdown", function (ev) {
+      if (!ev.target.classList.contains("marker")) {
+        hideInfoBox();
+      }
+    });
+
+    function createMarkers() {
+      const rect = mapWrapper.getBoundingClientRect();
+
+      const cols = 2;
+      const rows = Math.ceil(answers.length / cols);
+      const topN = 0.1;
+      const bottomN = 0.9;
+      const usableN = bottomN - topN;
+      const rowSpacingN = usableN / Math.max(rows, 1);
+
+      answers.forEach(function (answer, index) {
+        const el = document.createElement("div");
+        el.className = "marker";
+        el.textContent = String(answer.id);
+        el.dataset.id = String(answer.id);
+
+        const col = index % cols;
+        const row = Math.floor(index / cols);
+
+        const nx = 0.9 - col * 0.06;
+        const ny = topN + rowSpacingN * (row + 0.5);
+
+        const x = nx * rect.width;
+        const y = ny * rect.height;
+
+        el.style.left = x + "px";
+        el.style.top = y + "px";
+
+        mapWrapper.appendChild(el);
+
+        const markerData = {
+          id: answer.id,
+          element: el,
+          relX: nx,
+          relY: ny,
+          hasGuess: false,
+          info: answer.info
+        };
+
+        markers.push(markerData);
+        attachPointerHandlers(markerData);
+      });
+    }
+
+    function repositionAllMarkers() {
+      const rect = mapWrapper.getBoundingClientRect();
+      markers.forEach(function (marker) {
+        const x = marker.relX * rect.width;
+        const y = marker.relY * rect.height;
+        marker.element.style.left = x + "px";
+        marker.element.style.top = y + "px";
+      });
+    }
+
+    function attachPointerHandlers(markerData) {
+      const el = markerData.element;
+
+      let isPointerDown = false;
+      let pointerId = null;
+      let startClientX = 0;
+      let startClientY = 0;
+      let moved = false;
+
+      el.addEventListener("pointerdown", function (ev) {
+        isPointerDown = true;
+        pointerId = ev.pointerId;
+        startClientX = ev.clientX;
+        startClientY = ev.clientY;
+        moved = false;
+
+        if (dragEnabled) {
+          draggingMarker = markerData;
+          el.classList.add("dragging");
+          el.setPointerCapture(ev.pointerId);
+        }
+      });
+
+      el.addEventListener("pointermove", function (ev) {
+        if (!isPointerDown) return;
+
+        const dx = ev.clientX - startClientX;
+        const dy = ev.clientY - startClientY;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+          moved = true;
+        }
+
+        if (!dragEnabled || draggingMarker !== markerData) return;
+
+        const rect = mapWrapper.getBoundingClientRect();
+        let x = ev.clientX - rect.left;
+        let y = ev.clientY - rect.top;
+
+        if (x < 0) x = 0;
+        if (y < 0) y = 0;
+        if (x > rect.width) x = rect.width;
+        if (y > rect.height) y = rect.height;
+
+        markerData.relX = x / rect.width;
+        markerData.relY = y / rect.height;
+        markerData.hasGuess = true;
+
+        el.style.left = x + "px";
+        el.style.top = y + "px";
+
+        hideInfoBox();
+      });
+
+      el.addEventListener("pointerup", function () {
+        if (!isPointerDown) return;
+        isPointerDown = false;
+
+        if (dragEnabled && draggingMarker === markerData) {
+          draggingMarker = null;
+          el.classList.remove("dragging");
+          try {
+            el.releasePointerCapture(pointerId);
+          } catch (e) {}
+        }
+
+        if (!moved) {
+          toggleMarkerInfo(markerData);
+        }
+      });
+
+      el.addEventListener("pointercancel", function () {
+        if (!isPointerDown) return;
+        isPointerDown = false;
+
+        if (dragEnabled && draggingMarker === markerData) {
+          draggingMarker = null;
+          el.classList.remove("dragging");
+          try {
+            el.releasePointerCapture(pointerId);
+          } catch (e) {}
+        }
+      });
+    }
+
+    function toggleMarkerInfo(markerData) {
+      if (!markerData.info) {
+        hideInfoBox();
+        return;
+      }
+      if (activeInfoMarkerId === markerData.id) {
+        hideInfoBox();
+        return;
+      }
+      showInfoBox(markerData);
+    }
+
+    function showInfoBox(markerData) {
+      const el = markerData.element;
+      const left = parseFloat(el.style.left) || 0;
+      const top = parseFloat(el.style.top) || 0;
+
+      infoBox.textContent = markerData.info;
+      infoBox.style.left = left + "px";
+      infoBox.style.top = top + "px";
+      infoBox.style.display = "block";
+      activeInfoMarkerId = markerData.id;
+    }
+
+    function hideInfoBox() {
+      infoBox.style.display = "none";
+      activeInfoMarkerId = null;
+    }
+
+    function lockMarkers() {
+      markers.forEach(function (m) {
+        m.element.classList.add("locked");
+      });
+      dragEnabled = false;
+    }
+
+    function revealNextAnswer() {
+      if (revealIndex >= answers.length) {
+        nextAnswerBtn.disabled = true;
+        return;
+      }
+
+      const answer = answers[revealIndex];
+      const marker = markers.find(function (m) { return m.id === answer.id; });
+
+      const rect = mapWrapper.getBoundingClientRect();
+
+      let message;
+
+      if (answer.relX == null || answer.relY == null) {
+        message =
+          "#" + answer.id + " (" + answer.name + ": " + answer.city + "): " +
+          "correct location not configured – host needs to calibrate this one.";
+      } else {
+        const correctX = answer.relX * rect.width;
+        const correctY = answer.relY * rect.height;
+
+        const correctEl = document.createElement("div");
+        correctEl.className = "correct-marker";
+        correctEl.style.left = correctX + "px";
+        correctEl.style.top = correctY + "px";
+        correctEl.title = answer.name + ": " + answer.city;
+        mapWrapper.appendChild(correctEl);
+
+        if (marker && marker.hasGuess) {
+          const guessX = marker.relX * rect.width;
+          const guessY = marker.relY * rect.height;
+          const dx = guessX - correctX;
+          const dy = guessY - correctY;
+          const pixelDist = Math.hypot(dx, dy);
+          const miles = pixelDist * MILES_PER_PIXEL;
+          const rounded = Math.round(miles);
+
+          if (miles <= MILES_THRESHOLD) {
+            score += 1;
+            message =
+              "#" + answer.id + " (" + answer.name + ": " + answer.city + "): " +
+              rounded + " miles away – point awarded.";
+          } else {
+            message =
+              "#" + answer.id + " (" + answer.name + ": " + answer.city + "): " +
+              rounded + " miles away – no point.";
+          }
+        } else {
+          message =
+            "#" + answer.id + " (" + answer.name + ": " + answer.city + "): " +
+            "no guess placed.";
+        }
+      }
+
+      addStatus(message);
+      scoreEl.textContent = "Score: " + score + " / " + answers.length;
+
+      revealIndex += 1;
+      if (revealIndex >= answers.length) {
+        nextAnswerBtn.disabled = true;
+        addStatus("All answers revealed.");
+      }
+    }
+
+    function addStatus(text) {
+      const line = document.createElement("div");
+      line.textContent = text;
+      statusLog.prepend(line);
+    }
+
+    function handleCalibrationClick(ev) {
+      if (!HOST_MODE) return;
+      if (!currentCalibId) return;
+      if (ev.target.closest && ev.target.closest(".marker")) return;
+
+      const rect = mapWrapper.getBoundingClientRect();
+      const x = ev.clientX - rect.left;
+      const y = ev.clientY - rect.top;
+      const relX = x / rect.width;
+      const relY = y / rect.height;
+
+      const answer = answers.find(function (a) { return a.id === currentCalibId; });
+      if (!answer) return;
+
+      answer.relX = relX;
+      answer.relY = relY;
+
+      if (!answer.previewEl) {
+        const preview = document.createElement("div");
+        preview.className = "correct-marker";
+        mapWrapper.appendChild(preview);
+        answer.previewEl = preview;
+      }
+      answer.previewEl.style.left = x + "px";
+      answer.previewEl.style.top = y + "px";
+
+      updateCalibOutput();
+    }
+
+    function updateCalibOutput() {
+      if (!HOST_MODE) return;
+      const lines = answers.map(function (a) {
+        const rx = (a.relX == null) ? "null" : a.relX.toFixed(6);
+        const ry = (a.relY == null) ? "null" : a.relY.toFixed(6);
+        return '  { "id": ' + a.id + ', "name": "' + a.name +
+               '", "city": "' + a.city + '", "relX": ' + rx +
+               ', "relY": ' + ry + ' }';
+      });
+      calibOutput.value = '[\n' + lines.join(',\n') + '\n]';
+    }
+  });
+</script>
+
+</body>
+</html>
