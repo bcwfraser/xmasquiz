@@ -27,24 +27,23 @@
     align-items: flex-start;
   }
 
-  /* Your 1802 x 2048 North America outline */
+  /* Fixed-size map so pins don't move when layout changes */
   #map-wrapper {
-  position: relative;
-  width: 360px;               /* fixed width */
-  height: 410px;              /* 360 * (2048/1802) ≈ 410, keeps aspect */
-  background: #ffffff;
-  border: 1px solid #cccccc;
-  border-radius: 4px;
-  overflow: hidden;
-  touch-action: none;
-}
-
+    position: relative;
+    width: 360px;
+    aspect-ratio: 1802 / 2048;
+    background: #ffffff;
+    border: 1px solid #cccccc;
+    border-radius: 4px;
+    overflow: hidden;
+    touch-action: none;
+  }
 
   #map-image {
     position: absolute;
     inset: 0;
     background-image: url("blank-north-america.png");
-    background-size: cover;
+    background-size: 100% 100%;
     background-position: center;
     background-repeat: no-repeat;
   }
@@ -173,18 +172,6 @@
     color: #666666;
   }
 
-  #calibration {
-    margin-top: 12px;
-    padding-top: 8px;
-    border-top: 1px solid #eeeeee;
-  }
-
-  #calibration textarea {
-    width: 100%;
-    font-size: 11px;
-    font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
-  }
-
   @media (max-width: 600px) {
     #controls {
       max-width: 100%;
@@ -204,66 +191,49 @@
 
   <div id="controls">
     <h2>Instructions</h2>
-    <p>Drag each numbered circle onto the map where you think that World Cup stadium is.</p>
+    <p>Drag each numbered circle onto the map where you think that World Cup stadium (or player) is.</p>
     <p class="hint">
-      Tap a marker to see its name. When everyone is done, press “Start reveal” and then “Reveal next”.
+      Tap a marker to see its label. When everyone is done, press “Start reveal” and then “Reveal next”.
       A point is awarded if the guess is within about 150 miles.
     </p>
 
     <button id="start-reveal">Start reveal</button>
     <button id="next-answer" disabled>Reveal next</button>
 
-    <div id="score">Score: 0 / 16</div>
+    <div id="score">Score: 0 / 20</div>
     <p class="hint">Distances are approximate, based on the scale of this drawing.</p>
 
     <div id="status-log"></div>
-
-    <!-- Host calibration block (only shown when HOST_MODE = true in JS) -->
-    <div id="calibration" style="display:none;">
-      <h3 style="margin:8px 0 4px; font-size:15px;">Host calibration</h3>
-      <p class="hint">
-        Pick a stadium, then click its true spot on the map to set the correct answer.
-      </p>
-      <label for="calib-select">Stadium:</label>
-      <select id="calib-select"></select>
-      <p class="hint" style="margin-top:6px;">
-        Updated positions appear below as JSON – copy into the code if you want them saved permanently.
-      </p>
-      <textarea id="calib-output" rows="6" readonly></textarea>
-    </div>
   </div>
 </div>
 
 <script>
-  /* Host mode: true = show calibration tools, false = game only */
-  const HOST_MODE = true;
-
-  /* Approximate scale: one pixel ~2.5 miles across this drawing */
   const MILES_THRESHOLD = 150;
   const MILES_PER_PIXEL = 2.5;
 
   const answers = [
-    { id: 1,  name: "BC Place",                       city: "Vancouver",          relX: null, relY: null },
-    { id: 2,  name: "Lumen Field",                    city: "Seattle",            relX: null, relY: null },
-    { id: 3,  name: "Levi's Stadium",                 city: "Santa Clara",        relX: null, relY: null },
-    { id: 4,  name: "SoFi Stadium",                   city: "Los Angeles",        relX: null, relY: null },
-    { id: 5,  name: "Estadio Akron",                  city: "Guadalajara",        relX: null, relY: null },
-    { id: 6,  name: "Estadio Azteca",                 city: "Mexico City",        relX: null, relY: null },
-    { id: 7,  name: "Estadio BBVA",                   city: "Monterrey",          relX: null, relY: null },
-    { id: 8,  name: "AT&T Stadium",                   city: "Arlington (Dallas)", relX: null, relY: null },
-    { id: 9,  name: "NRG Stadium",                    city: "Houston",            relX: null, relY: null },
-    { id: 10, name: "GEHA Field at Arrowhead Stadium", city: "Kansas City",      relX: null, relY: null },
-    { id: 11, name: "Mercedes-Benz Stadium",          city: "Atlanta",            relX: null, relY: null },
-    { id: 12, name: "Hard Rock Stadium",              city: "Miami Gardens",      relX: null, relY: null },
-    { id: 13, name: "BMO Field",                      city: "Toronto",            relX: null, relY: null },
-    { id: 14, name: "Gillette Stadium",               city: "Foxborough (Boston)",relX: null, relY: null },
-    { id: 15, name: "Lincoln Financial Field",        city: "Philadelphia",       relX: null, relY: null },
-    { id: 16, name: "MetLife Stadium",                city: "East Rutherford",    relX: null, relY: null }
-  ];
+    { id: 1,  label: "BC Place: Vancouver",                       relX: 0.272222, relY: 0.481301 },
+    { id: 2,  label: "Lumen Field: Seattle",                      relX: 0.266667, relY: 0.515447 },
+    { id: 3,  label: "Levi's Stadium: Santa Clara",               relX: 0.233333, relY: 0.626829 },
+    { id: 4,  label: "SoFi Stadium: Los Angeles",                 relX: 0.261111, relY: 0.659350 },
+    { id: 5,  label: "Estadio Akron: Guadalajara",                relX: 0.400000, relY: 0.816260 },
+    { id: 6,  label: "Estadio Azteca: Mexico City",               relX: 0.450000, relY: 0.843089 },
+    { id: 7,  label: "Estadio BBVA: Monterrey",                   relX: 0.438889, relY: 0.752846 },
+    { id: 8,  label: "AT&T Stadium: Arlington (Dallas)",          relX: 0.477778, relY: 0.670732 },
+    { id: 9,  label: "NRG Stadium: Houston",                      relX: 0.494444, relY: 0.726016 },
+    { id: 10, label: "GEHA Field at Arrowhead Stadium: Kansas City", relX: 0.497222, relY: 0.603252 },
+    { id: 11, label: "Mercedes-Benz Stadium: Atlanta",            relX: 0.616667, relY: 0.652846 },
+    { id: 12, label: "Hard Rock Stadium: Miami Gardens",          relX: 0.666667, relY: 0.750407 },
+    { id: 13, label: "BMO Field: Toronto",                        relX: 0.619444, relY: 0.529268 },
+    { id: 14, label: "Gillette Stadium: Foxborough (Boston)",     relX: 0.705556, relY: 0.565041 },
+    { id: 15, label: "Lincoln Financial Field: Philadelphia",     relX: 0.677778, relY: 0.602439 },
+    { id: 16, label: "MetLife Stadium: East Rutherford",          relX: 0.705556, relY: 0.556098 },
 
-  answers.forEach(function (a) {
-    a.info = a.name + ": " + a.city;
-  });
+    { id: 17, label: "Guillermo Ochoa",                           relX: 0.450000, relY: 0.843089 }, // Azteca
+    { id: 18, label: "Miguel Almirón",                            relX: 0.616667, relY: 0.652846 }, // Mercedes-Benz
+    { id: 19, label: "Jermaine Defoe",                            relX: 0.619444, relY: 0.529268 }, // BMO Field
+    { id: 20, label: "Mutch / Reo-Coker / Beardsley",             relX: 0.272222, relY: 0.481301 }  // Vancouver
+  ];
 
   document.addEventListener("DOMContentLoaded", function () {
     const mapWrapper     = document.getElementById("map-wrapper");
@@ -273,36 +243,12 @@
     const statusLog      = document.getElementById("status-log");
     const infoBox        = document.getElementById("marker-info");
 
-    const calibSection   = document.getElementById("calibration");
-    const calibSelect    = document.getElementById("calib-select");
-    const calibOutput    = document.getElementById("calib-output");
-
     const markers = [];
     let draggingMarker = null;
     let dragEnabled = true;
     let revealIndex = 0;
     let score = 0;
     let activeInfoMarkerId = null;
-    let currentCalibId = null;
-
-    if (HOST_MODE) {
-      calibSection.style.display = "block";
-      answers.forEach(function (a) {
-        const opt = document.createElement("option");
-        opt.value = String(a.id);
-        opt.textContent = "#" + a.id + " – " + a.info;
-        calibSelect.appendChild(opt);
-      });
-      if (answers.length > 0) {
-        currentCalibId = answers[0].id;
-        calibSelect.value = String(currentCalibId);
-      }
-      calibSelect.addEventListener("change", function () {
-        currentCalibId = parseInt(calibSelect.value, 10);
-      });
-      updateCalibOutput();
-      mapWrapper.addEventListener("click", handleCalibrationClick);
-    }
 
     createMarkers();
     scoreEl.textContent = "Score: " + score + " / " + answers.length;
@@ -363,21 +309,11 @@
           relX: nx,
           relY: ny,
           hasGuess: false,
-          info: answer.info
+          info: answer.label
         };
 
         markers.push(markerData);
         attachPointerHandlers(markerData);
-      });
-    }
-
-    function repositionAllMarkers() {
-      const rect = mapWrapper.getBoundingClientRect();
-      markers.forEach(function (marker) {
-        const x = marker.relX * rect.width;
-        const y = marker.relY * rect.height;
-        marker.element.style.left = x + "px";
-        marker.element.style.top = y + "px";
       });
     }
 
@@ -509,50 +445,42 @@
 
       const answer = answers[revealIndex];
       const marker = markers.find(function (m) { return m.id === answer.id; });
-
       const rect = mapWrapper.getBoundingClientRect();
 
+      const correctX = answer.relX * rect.width;
+      const correctY = answer.relY * rect.height;
+
+      const correctEl = document.createElement("div");
+      correctEl.className = "correct-marker";
+      correctEl.style.left = correctX + "px";
+      correctEl.style.top = correctY + "px";
+      correctEl.title = answer.label;
+      mapWrapper.appendChild(correctEl);
+
       let message;
+      if (marker && marker.hasGuess) {
+        const guessX = marker.relX * rect.width;
+        const guessY = marker.relY * rect.height;
+        const dx = guessX - correctX;
+        const dy = guessY - correctY;
+        const pixelDist = Math.hypot(dx, dy);
+        const miles = pixelDist * MILES_PER_PIXEL;
+        const rounded = Math.round(miles);
 
-      if (answer.relX == null || answer.relY == null) {
-        message =
-          "#" + answer.id + " (" + answer.name + ": " + answer.city + "): " +
-          "correct location not configured – host needs to calibrate this one.";
-      } else {
-        const correctX = answer.relX * rect.width;
-        const correctY = answer.relY * rect.height;
-
-        const correctEl = document.createElement("div");
-        correctEl.className = "correct-marker";
-        correctEl.style.left = correctX + "px";
-        correctEl.style.top = correctY + "px";
-        correctEl.title = answer.name + ": " + answer.city;
-        mapWrapper.appendChild(correctEl);
-
-        if (marker && marker.hasGuess) {
-          const guessX = marker.relX * rect.width;
-          const guessY = marker.relY * rect.height;
-          const dx = guessX - correctX;
-          const dy = guessY - correctY;
-          const pixelDist = Math.hypot(dx, dy);
-          const miles = pixelDist * MILES_PER_PIXEL;
-          const rounded = Math.round(miles);
-
-          if (miles <= MILES_THRESHOLD) {
-            score += 1;
-            message =
-              "#" + answer.id + " (" + answer.name + ": " + answer.city + "): " +
-              rounded + " miles away – point awarded.";
-          } else {
-            message =
-              "#" + answer.id + " (" + answer.name + ": " + answer.city + "): " +
-              rounded + " miles away – no point.";
-          }
+        if (miles <= MILES_THRESHOLD) {
+          score += 1;
+          message =
+            "#" + answer.id + " (" + answer.label + "): " +
+            rounded + " miles away – point awarded.";
         } else {
           message =
-            "#" + answer.id + " (" + answer.name + ": " + answer.city + "): " +
-            "no guess placed.";
+            "#" + answer.id + " (" + answer.label + "): " +
+            rounded + " miles away – no point.";
         }
+      } else {
+        message =
+          "#" + answer.id + " (" + answer.label + "): " +
+          "no guess placed.";
       }
 
       addStatus(message);
@@ -569,47 +497,6 @@
       const line = document.createElement("div");
       line.textContent = text;
       statusLog.prepend(line);
-    }
-
-    function handleCalibrationClick(ev) {
-      if (!HOST_MODE) return;
-      if (!currentCalibId) return;
-      if (ev.target.closest && ev.target.closest(".marker")) return;
-
-      const rect = mapWrapper.getBoundingClientRect();
-      const x = ev.clientX - rect.left;
-      const y = ev.clientY - rect.top;
-      const relX = x / rect.width;
-      const relY = y / rect.height;
-
-      const answer = answers.find(function (a) { return a.id === currentCalibId; });
-      if (!answer) return;
-
-      answer.relX = relX;
-      answer.relY = relY;
-
-      if (!answer.previewEl) {
-        const preview = document.createElement("div");
-        preview.className = "correct-marker";
-        mapWrapper.appendChild(preview);
-        answer.previewEl = preview;
-      }
-      answer.previewEl.style.left = x + "px";
-      answer.previewEl.style.top = y + "px";
-
-      updateCalibOutput();
-    }
-
-    function updateCalibOutput() {
-      if (!HOST_MODE) return;
-      const lines = answers.map(function (a) {
-        const rx = (a.relX == null) ? "null" : a.relX.toFixed(6);
-        const ry = (a.relY == null) ? "null" : a.relY.toFixed(6);
-        return '  { "id": ' + a.id + ', "name": "' + a.name +
-               '", "city": "' + a.city + '", "relX": ' + rx +
-               ', "relY": ' + ry + ' }';
-      });
-      calibOutput.value = '[\n' + lines.join(',\n') + '\n]';
     }
   });
 </script>
